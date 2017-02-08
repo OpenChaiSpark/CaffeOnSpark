@@ -3,7 +3,9 @@ Copyright 2016 Yahoo Inc.
 Licensed under the terms of the Apache 2.0 license.
 Please see LICENSE file in the project root for terms.
 -->
-# CaffeOnSpark
+# PointRData Fork of CaffeOnSpark
+
+This fork will split the CaffeNet Java/C++ client from the CaffeProcessor Spark/Scala processor
 
 ## What's CaffeOnSpark?
 
