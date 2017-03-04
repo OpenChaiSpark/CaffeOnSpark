@@ -3,10 +3,56 @@
 // Please see LICENSE file in the project root for terms.
 package com.yahoo.ml.jcaffe;
 
+import java.io.IOException;
+import java.io.ObjectInput;
+import java.io.ObjectOutput;
 import java.lang.RuntimeException;
 
-public class FloatBlob extends BaseObject {
+public class FloatBlob extends BaseObject implements java.io.Externalizable {
     private boolean shouldDeallocate;
+
+    private int count = 0;
+
+    public static class FloatBlobData {
+        public long dataaddress;
+        public int count;
+        public int[] shape;
+        public float[] cpu_data;
+//        public float[] gpu_data;
+    }
+
+    @Override
+    public void writeExternal(ObjectOutput out) throws IOException {
+        out.writeLong(dataaddress);
+        int cnt = count();
+        out.writeInt(cnt);
+        for (int s: blobShape) {
+            out.writeInt(s);
+        }
+        FloatArray cpuData = cpu_data();
+        float[] farr = new float[cnt];
+        for (int i=0;i<cnt; i++) {
+            farr[i] = cpuData.get(i);
+        }
+    }
+
+    @Override
+    public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+        dataaddress = in.readLong();
+        count = in.readInt();
+        for (int s=0;s<blobShape.length;s++) {
+            blobShape[s] = in.readInt();
+        }
+        for (int s=0;s<blobShape.length;s++) {
+            blobShape[s] = in.readInt();
+        }
+        reshape(blobShape);
+        float[] farr = new float[count];
+        for (int i=0;i<count; i++) {
+            farr[i] = in.readFloat();
+        }
+        set_cpu_data(farr);
+    }
 
     /**
      * constructor of FloatBlob
@@ -25,6 +71,8 @@ public class FloatBlob extends BaseObject {
     private native boolean allocate();
 
     private long dataaddress = 0;
+
+    private int[] blobShape = new int[4];
 
     @Override
     protected void deallocate(long address) {
@@ -56,13 +104,13 @@ public class FloatBlob extends BaseObject {
 
     public native FloatArray cpu_data();
 
-    public boolean set_cpu_data(float[] data){
-	dataaddress = set_cpu_data(data, dataaddress);
-	if(dataaddress != 0)
-	    return true;
-	return false;
+    public boolean set_cpu_data(float[] data) {
+        dataaddress = set_cpu_data(data, dataaddress);
+        if (dataaddress != 0)
+            return true;
+        return false;
     }
-	
+
     protected native long set_cpu_data(float[] data, long dataaddress);
 
     public native FloatArray gpu_data();
@@ -85,5 +133,6 @@ public class FloatBlob extends BaseObject {
      * propagate the new input shape to higher layers.
      */
     public native boolean reshape(int[] shape);
+
 }
 

@@ -14,6 +14,7 @@
   <packaging>jar</packaging>
 
   <properties>
+    <ocspark.version>1.0.0</ocspark.version>
     <maven.compiler.source>1.7</maven.compiler.source>
     <maven.compiler.target>1.7</maven.compiler.target>
     <hadoop.version>2.5.0</hadoop.version>
@@ -40,6 +41,21 @@
     </profile>
   </profiles>
   <dependencies>
+    <dependency>
+      <groupId>org.openchai.ocspark</groupId>
+      <artifactId>tcpclient</artifactId>
+      <version>${ocspark.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.openchai.ocspark</groupId>
+      <artifactId>p2prdd</artifactId>
+      <version>${ocspark.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.openchai.ocspark</groupId>
+      <artifactId>caffeonspark</artifactId>
+      <version>${ocspark.version}</version>
+    </dependency>
     <dependency>
       <groupId>com.yahoo.ml</groupId>
       <artifactId>caffe-distri</artifactId>

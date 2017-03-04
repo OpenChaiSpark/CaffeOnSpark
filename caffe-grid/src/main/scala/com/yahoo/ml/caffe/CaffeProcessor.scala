@@ -16,6 +16,7 @@ import org.apache.spark.sql.Row
 import scala.collection.immutable.Map
 import scala.collection.mutable.ArrayBuffer
 import java.util.concurrent.atomic.AtomicReference
+import org.openchai.caffeonspark._
 
 private[caffe] object CaffeProcessor {
   var myInstance: CaffeProcessor[_, _] = null
@@ -30,8 +31,8 @@ private[caffe] object CaffeProcessor {
 }
 
 private[caffe] class QueuePair[T]  {
-  val Free: ArrayBlockingQueue[T] = new ArrayBlockingQueue[T] (2)
-  val Full: ArrayBlockingQueue[T] = new ArrayBlockingQueue[T] (2)
+  val Free: ArrayBlockingQueue[QueueEntry] = new XferArrayBlockingQueue[QueueEntry](2)
+  val Full: ArrayBlockingQueue[QueueEntry] = new XferArrayBlockingQueue[QueueEntry](2)
 }
 
 private[caffe] class CaffeProcessor[T1, T2](val sources: Array[DataSource[T1, T2]],
@@ -231,6 +232,8 @@ private[caffe] class CaffeProcessor[T1, T2](val sources: Array[DataSource[T1, T2
     while (!solvers.get(queueIdx).isCompleted && tpl==null)
       tpl = queue.peek()
 
+    println(s"Take from queue: queue type is ${tpl.getClass.getSimpleName}")
+
     if (solvers.get(queueIdx).isCompleted) return null
     queue.take()
   }
@@ -239,6 +242,7 @@ private[caffe] class CaffeProcessor[T1, T2](val sources: Array[DataSource[T1, T2
       queue : ArrayBlockingQueue[(Array[String], Array[FloatBlob])],
       queueIdx: Int): Unit = {
     var status = false
+    println(s"Put into queue: queue type is ${queue.getClass.getSimpleName}")
     while (!solvers.get(queueIdx).isCompleted && status==false)
         status = queue.offer(tpl)
   }
@@ -317,59 +321,60 @@ private[caffe] class CaffeProcessor[T1, T2](val sources: Array[DataSource[T1, T2
             putIntoQueue(tpl, queuePair.Full, queueIdx)
           }
         }
-      } else {
+      } //else {
         //This uses legacy memory data layer, will be removed in the future.
-        var transformer: FloatDataTransformer = null
-        if (source.transformationParameter != null) {
-          transformer = new FloatDataTransformer(source.transformationParameter, source.isTrain)
-        }
-        var data: Array[FloatBlob] = if (transformer != null) source.dummyDataBlobs() else null
-        val batchSize = source.batchSize()
-        val dataHolder = source.dummyDataHolder()
-        val sampleIds = new Array[String](batchSize)
-
-        //initialize free queue now that device is set
-        initialFreeQueue(sourceId, queuePair)
-
-        while (!solvers.get(solverIdx).isCompleted && source.nextBatch(sampleIds, dataHolder)) {
-          // push the data/lablels to solver thread
-          val tpl = takeFromQueue(queuePair.Free, queueIdx)
-          if (tpl != null) {
-            // copy ids
-            sampleIds.copyToArray(tpl._1)
-            // processing data
-            if (transformer != null) {
-              val validInput: Boolean = dataHolder match {
-                case (first, second) => {
-                  if (first.isInstanceOf[MatVector] &&
-                    second.isInstanceOf[FloatBlob]) {
-                    transformer.transform(first.asInstanceOf[MatVector], data(0))
-                    // copy data
-                    for (idx <- 0 until data.size - 1)
-                      tpl._2(idx).copyFrom(data(idx))
-                    // copy label
-                    tpl._2(data.size - 1).copyFrom(second.asInstanceOf[FloatBlob])
-                    true
-                  } else false
-                }
-                case _ => false
-              }
-              if (!validInput) {
-                throw new Exception("Unsupported data type for transformer")
-              }
-            } else {
-              dataHolder match {
-                case dataBlobs: Seq[FloatBlob@unchecked] => {
-                  for (vidx <- 0 until dataBlobs.size)
-                    tpl._2(vidx).copyFrom(dataBlobs(vidx))
-                }
-                case _ => throw new Exception("Untransformed data type must be FloatBlob")
-              }
-            }
-            putIntoQueue(tpl, queuePair.Full, queueIdx)
-          }
-        }
-      }
+//        var transformer: FloatDataTransformer = null
+//        if (source.transformationParameter != null) {
+//          transformer = new FloatDataTransformer(source.transformationParameter, source.isTrain)
+//        }
+//        var data: Array[FloatBlob] = if (transformer != null) source.dummyDataBlobs() else null
+//        val batchSize = source.batchSize()
+//        val dataHolder = source.dummyDataHolder()
+//        val sampleIds = new Array[String](batchSize)
+//
+//        //initialize free queue now that device is set
+//        initialFreeQueue(sourceId, queuePair)
+//
+//        while (!solvers.get(solverIdx).isCompleted && source.nextBatch(sampleIds, dataHolder)) {
+//          // push the data/lablels to solver thread
+//          val tpl = takeFromQueue(queuePair.Free, queueIdx)
+//          if (tpl != null) {
+//            // copy ids
+//            sampleIds.copyToArray(tpl._1)
+//            // processing data
+//            if (transformer != null) {
+//              val validInput: Boolean = dataHolder match {
+//                case (first, second) => {
+//                  if (first.isInstanceOf[MatVector] &&
+//                    second.isInstanceOf[FloatBlob]) {
+//                    transformer.transform(first.asInstanceOf[MatVector], data(0))
+//                    // copy data
+//                    for (idx <- 0 until data.size - 1)
+//                      tpl._2(idx).copyFrom(data(idx))
+//                    // copy label
+//                    tpl._2(data.size - 1).copyFrom(second.asInstanceOf[FloatBlob])
+//                    true
+//                  } else false
+//                }
+//                case _ => false
+//              }
+//              if (!validInput) {
+//                throw new Exception("Unsupported data type for transformer")
+//              }
+//            } else {
+//              dataHolder match {
+//                case dataBlobs: Seq[FloatBlob@unchecked] => {
+//                  for (vidx <- 0 until dataBlobs.size)
+//                    tpl._2(vidx).copyFrom(dataBlobs(vidx))
+//                }
+//                case _ => throw new Exception("Untransformed data type must be FloatBlob")
+//              }
+//            }
+//            putIntoQueue(tpl, queuePair.Full, queueIdx)
+//          }
+        else {
+          throw new UnsupportedOperationException("Must use CosDataLayer")
+       }
     }
     catch {
       case ex: Exception => {
