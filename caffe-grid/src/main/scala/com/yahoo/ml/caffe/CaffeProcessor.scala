@@ -19,7 +19,10 @@ import java.util.concurrent.atomic.AtomicReference
 import org.openchai.caffeonspark._
 
 private[caffe] object CaffeProcessor {
+  private val log: Logger = LoggerFactory.getLogger(this.getClass)
   var myInstance: CaffeProcessor[_, _] = null
+  val msg = s"** CAFFE On SPARK CaffeProcessor on ${java.net.InetAddress.getLocalHost.getHostName}**\n  Brought to you by Jerry Wang et al"
+  println(msg); log.info(msg)
   def instance[T1, T2](sources: Array[DataSource[T1, T2]], rank: Int): CaffeProcessor[T1, T2] = {
     myInstance = new CaffeProcessor[T1, T2](sources, rank)
     myInstance.asInstanceOf[CaffeProcessor[T1, T2]]

@@ -25,6 +25,8 @@ import scala.reflect.ClassTag
 object CaffeOnSpark {
   private val log: Logger = LoggerFactory.getLogger(this.getClass)
   def main(args: Array[String]) {
+    val msg = "** CAFFE On SPARK **\n  Brought to you by Jerry Wang et al"
+    println(msg); log.info(msg)
     val sc_conf = new SparkConf()
     sc_conf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
       .set("spark.scheduler.minRegisteredResourcesRatio", "1.0")

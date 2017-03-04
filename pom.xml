@@ -15,7 +15,7 @@
     <name>caffe</name>
 	
     <modules>
-        <module>caffe-distri</module>
+      <!--   <module>caffe-distri</module> -->
         <module>caffe-grid</module>
     </modules>    
 
