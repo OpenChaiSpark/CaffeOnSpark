@@ -34,8 +34,8 @@ private[caffe] object CaffeProcessor {
 }
 
 private[caffe] class QueuePair[T]  {
-  val Free: ArrayBlockingQueue[QueueEntry] = new XferArrayBlockingQueue[QueueEntry](2)
-  val Full: ArrayBlockingQueue[QueueEntry] = new XferArrayBlockingQueue[QueueEntry](2)
+  val Free: ArrayBlockingQueue[QueueEntry] = new ArrayBlockingQueue[QueueEntry](2)
+  val Full: ArrayBlockingQueue[QueueEntry] = new ArrayBlockingQueue[QueueEntry](2)
 }
 
 private[caffe] class CaffeProcessor[T1, T2](val sources: Array[DataSource[T1, T2]],

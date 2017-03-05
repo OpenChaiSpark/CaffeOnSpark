@@ -112,6 +112,7 @@ class CaffeOnSpark(@transient val sc: SparkContext) extends Serializable {
       throw new IllegalStateException("input model file must be provided for incremental training")
     }
 
+
     var rank_2_addresses_n_host = sc.parallelize(0 until conf.clusterSize, conf.clusterSize).map {
       case rank: Int => {
         val processor = CaffeProcessor.instance[T1, T2](sources, rank)
