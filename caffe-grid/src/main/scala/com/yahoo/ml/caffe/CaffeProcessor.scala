@@ -16,7 +16,7 @@ import org.apache.spark.sql.Row
 import scala.collection.immutable.Map
 import scala.collection.mutable.ArrayBuffer
 import java.util.concurrent.atomic.AtomicReference
-import org.openchai.caffeonspark._
+import org.openchai.caffeonspark.XferArrayBlockingQueue
 
 private[caffe] object CaffeProcessor {
   private val log: Logger = LoggerFactory.getLogger(this.getClass)
@@ -53,6 +53,7 @@ private[caffe] class CaffeProcessor[T1, T2](val sources: Array[DataSource[T1, T2
   val conf = sources(0).conf
   val solverMode: Int = sources(0).solverParameter.getSolverMode().getNumber()
   val numLocalGPUs: Int = conf.devices
+  log.info(s"SHB: NumlocalGPUs=$numLocalGPUs")
   val numTotalGPUs: Int = numLocalGPUs * conf.clusterSize
   assert(sources != null)
   val poolSize = numLocalGPUs * (conf.transform_thread_per_device + 1) + conf.transform_thread_per_device
@@ -107,6 +108,7 @@ private[caffe] class CaffeProcessor[T1, T2](val sources: Array[DataSource[T1, T2
 
   //start the processor
   def start(rank2addresses: Array[(Int, Array[String])]) : Unit = {
+    log.info("SHB: Starting the CaffeProcessor")
     if (sources(0).isTrain) {
       val peer_addr = new Array[String](rank2addresses.length)
       for ((peer_rank, addrs) <- rank2addresses) {
@@ -133,6 +135,7 @@ private[caffe] class CaffeProcessor[T1, T2](val sources: Array[DataSource[T1, T2
     transformers.clear
 
 
+    log.info(s"SHB: Starting threads with numLocalGPUs=$numLocalGPUs ..")
     for (g <- 0 until numLocalGPUs) {
       var queuePairTrain = new QueuePair[(Array[String], Array[FloatBlob])]()
       var queuePairSet: Array[QueuePair[(Array[String], Array[FloatBlob])]] = new Array[QueuePair[(Array[String], Array[FloatBlob])]](2)
@@ -235,7 +238,7 @@ private[caffe] class CaffeProcessor[T1, T2](val sources: Array[DataSource[T1, T2
     while (!solvers.get(queueIdx).isCompleted && tpl==null)
       tpl = queue.peek()
 
-    println(s"Take from queue: queue type is ${tpl.getClass.getSimpleName}")
+    log.info(s"SHB: Take from queue: queue type is ${tpl.getClass.getSimpleName}")
 
     if (solvers.get(queueIdx).isCompleted) return null
     queue.take()
@@ -252,6 +255,7 @@ private[caffe] class CaffeProcessor[T1, T2](val sources: Array[DataSource[T1, T2
 
   private def initialFreeQueue(sourceId: Int, queuePair: QueuePair[(Array[String], Array[FloatBlob])]): Unit = {
     val batchSize = sources(sourceId).batchSize()
+    log.info(s"SHB: InitialFreeQueue with Free size: ${queuePair.Free.size}")
     for (j <- queuePair.Free.remainingCapacity() to 1 by -1) {
       val datablob: Array[FloatBlob] = sources(sourceId).dummyDataBlobs()
       queuePair.Free.put((new Array[String](batchSize), datablob))
@@ -265,6 +269,7 @@ private[caffe] class CaffeProcessor[T1, T2](val sources: Array[DataSource[T1, T2
     var source = sources(sourceId)
     //This will eliminate data copy by solver thread
     caffeNet.init(solverIdx)
+    log.info(s"SHB: doTransform soruceId=$sourceId, solverIdx=$solverIdx qpair=${queuePair.Free.size},${queuePair.Full.size()}")
 
     try {
       if (source.useCoSDataLayer()) {
@@ -290,17 +295,21 @@ private[caffe] class CaffeProcessor[T1, T2](val sources: Array[DataSource[T1, T2
         //initialize free queue now that device is set
         initialFreeQueue(sourceId, queuePair)
         while (!solvers.get(solverIdx).isCompleted && source.nextBatch(sampleIds, dataHolder)) {
+          log.info(s"SHB: doTransform in solvers ! completed loop")
           val dataArray = dataHolder.asInstanceOf[Array[Any]]
           val tpl = takeFromQueue(queuePair.Free, queueIdx)
           if (tpl != null) {
             sampleIds.copyToArray(tpl._1)
             for (i <- 0 until numTops) {
+              val fbSize = if (tpl._2 != null && tpl._2.nonEmpty) { tpl._2.apply(0).count } else { -1 }
+              log.info(s"SHB CaffeProcessor: retrieved data from Queue with  ${tpl._2} floatBlobs[0].length = $fbSize")
               dataType(i) match {
                 case CoSDataParameter.DataType.STRING |
                      CoSDataParameter.DataType.INT |
                      CoSDataParameter.DataType.FLOAT |
                      CoSDataParameter.DataType.INT_ARRAY |
                      CoSDataParameter.DataType.FLOAT_ARRAY => {
+                  log.info(s"SHB CaffeProcessor: ${dataType(i).toString} type detected ${tpl._2} floatBlobs[0].length = $fbSize")
                   if (transformers(i) != null) {
                     transformers(i).transform(dataArray(i).asInstanceOf[FloatBlob], data(i))
                   }
@@ -309,6 +318,10 @@ private[caffe] class CaffeProcessor[T1, T2](val sources: Array[DataSource[T1, T2
                 case CoSDataParameter.DataType.RAW_IMAGE |
                      CoSDataParameter.DataType.ENCODED_IMAGE |
                      CoSDataParameter.DataType.ENCODED_IMAGE_WITH_DIM=> {
+                  val mv = dataArray(i).asInstanceOf[MatVector]
+                  val dsize = if (mv.data(0).nonEmpty) {mv.data(0).length} else -1
+                  log.info(s"SHB CaffeProcessor: IMAGE type detected with dataArray.size=$dsize")
+
                   if (transformers(i) != null) {
                     transformers(i).transform(dataArray(i).asInstanceOf[MatVector], data(i))
                   } else {
@@ -400,6 +413,7 @@ private[caffe] class CaffeProcessor[T1, T2](val sources: Array[DataSource[T1, T2
     val top_vec = caffeNetList(0).getValidationOutputBlobs(length)
     val dim_features: Seq[Int] = (0 until length).map{i => top_vec(i).count/batchSize}
     // processing the result blob by blob
+    log.info(s"SHB updateValidationReport: length=$length")
     for (j <- 0 until length) {
       val blob = top_vec(j)
       // If dim_feature(j) == 0, the layer does aggregation.
@@ -421,6 +435,7 @@ private[caffe] class CaffeProcessor[T1, T2](val sources: Array[DataSource[T1, T2
   private def doTrain(caffeNet: CaffeNet, syncIdx: Int,
                       queuePairSet: Array[QueuePair[(Array[String], Array[FloatBlob])]]): Unit = {
 
+  log.info(s"SHB: doTrain")
     try {
       val isRootSolver: Boolean = (syncIdx == 0)
       val snapshotPrefix: String = sources(0).solverParameter.getSnapshotPrefix()
@@ -480,6 +495,7 @@ private[caffe] class CaffeProcessor[T1, T2](val sources: Array[DataSource[T1, T2
 
   private def doFeatures(caffeNet: CaffeNet, syncIdx: Int,
                      queuePair: QueuePair[(Array[String], Array[FloatBlob])]): Unit = {
+  log.info(s"SHB: doFeatures")
     try {
       var blobNames = conf.features
       if (conf.isTest)

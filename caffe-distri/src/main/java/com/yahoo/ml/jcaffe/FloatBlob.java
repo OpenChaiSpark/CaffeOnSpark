@@ -38,6 +38,7 @@ public class FloatBlob extends BaseObject implements java.io.Externalizable {
 
     @Override
     public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+
         dataaddress = in.readLong();
         count = in.readInt();
         for (int s=0;s<blobShape.length;s++) {
