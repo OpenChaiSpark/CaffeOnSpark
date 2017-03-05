@@ -3,7 +3,7 @@
 // Please see LICENSE file in the project root for terms.
 package com.yahoo.ml.caffe
 
-import java.io.{File, FilenameFilter}
+import java.io.{File, FilenameFilter, FileNotFoundException}
 import java.util.concurrent.ConcurrentHashMap
 
 import caffe.Caffe.Datum
@@ -177,6 +177,9 @@ class LmdbRDD(@transient val sc: SparkContext, val lmdb_path: String, val numPar
           SparkFiles.get(folder.getName)
 
       //make sure that all mdb files are writable
+	if (!(new File(local_lmdb_folder).exists())) {
+		throw new FileNotFoundException(s"local_lmdb_folder not found $local_lmdb_folder")
+	}
       val db_files = new File(local_lmdb_folder).listFiles(new FilenameFilter {
         override def accept(dir: File, name: String): Boolean =
           name.toLowerCase().endsWith(".mdb")
