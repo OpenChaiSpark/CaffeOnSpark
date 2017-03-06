@@ -23,7 +23,7 @@ private[caffe] object CaffeProcessor {
   var myInstance: CaffeProcessor[_, _] = null
   val msg = s"** SHB: CAFFE On SPARK CaffeProcessor on ${java.net.InetAddress.getLocalHost.getHostName}**\n  Brought to you by Jerry Wang et al"
   println(msg); log.info(msg)
-  def instance[T1, T2](sources: Array[DataSource[T1, T2]], rank: Int): CaffeProcessor[T1, T2] = {
+  def instance[T1, T2](sources: Array[CaffeNetDataSource[T1, T2]], rank: Int): CaffeProcessor[T1, T2] = {
     myInstance = new CaffeProcessor[T1, T2](sources, rank)
     myInstance.asInstanceOf[CaffeProcessor[T1, T2]]
   }
@@ -34,11 +34,11 @@ private[caffe] object CaffeProcessor {
 }
 
 private[caffe] class QueuePair[T]  {
-  val Free: ArrayBlockingQueue[QueueEntry] = new XferArrayBlockingQueue[QueueEntry](2)
-  val Full: ArrayBlockingQueue[QueueEntry] = new XferArrayBlockingQueue[QueueEntry](2)
+  val Free: ArrayBlockingQueue[QueueEntry] = new ArrayBlockingQueue[QueueEntry](2)
+  val Full: ArrayBlockingQueue[QueueEntry] = new ArrayBlockingQueue[QueueEntry](2)
 }
 
-private[caffe] class CaffeProcessor[T1, T2](val sources: Array[DataSource[T1, T2]],
+private[caffe] class CaffeProcessor[T1, T2](val sources: Array[CaffeNetDataSource[T1, T2]],
                                              val rank: Int) {
   val log: Logger = LoggerFactory.getLogger(this.getClass)
   log.info("SHB: CaffeProcessor rank is " + rank)

@@ -12,20 +12,9 @@ import caffe.Caffe._
 import com.yahoo.ml.jcaffe._
 import org.slf4j.{LoggerFactory, Logger}
 
-/**
- * Base class for various data sources.
- *
- * Each subclass must have a constructor with the following signature: (conf: Config, layerId: Int, isTrain: Boolean).
- * This is required by CaffeOnSpark at startup.
- *
- * @param conf CaffeSpark configuration
- * @param layerId the layer index in the network protocol file
- * @param STOP_MARK stop mark to indicate source is exhausted
- * @tparam T1 class of entries extracted from RDD
- * @tparam T2 class of data blob in batch
- */
-abstract class DataSource[T1, T2](val conf: Config, val layerId : Int, val isTrain: Boolean, val STOP_MARK: T1)
-  extends Serializable {
+
+/* abstract */ class CaffeNetDataSource[T1, T2](val conf: CaffeNetConfig, val layerId : Int, val isTrain: Boolean, val STOP_MARK: T1) extends Serializable {
+
   @transient private[caffe] var solverParameter: SolverParameter = null
   @transient private[caffe] var layerParameter: LayerParameter = null
   @transient private[caffe] var transformationParameter:TransformationParameter = null
@@ -33,13 +22,6 @@ abstract class DataSource[T1, T2](val conf: Config, val layerId : Int, val isTra
   @transient protected var sourceFilePath : String = null
   @transient protected var batchSize_ : Int = -1
   @transient protected var solverMode: Int = -1
-
-  /**
-   * construct a sample RDD
-   * @param sc spark context
-   * @return RDD created from this source
-   */
-  def makeRDD(sc: SparkContext) : RDD[T1]
 
   /**
    *  initialization of a Source within a process
@@ -127,6 +109,36 @@ abstract class DataSource[T1, T2](val conf: Config, val layerId : Int, val isTra
   def getTopTransformParam(index: Int): TransformationParameter = null
 }
 
+
+/**
+ * Base class for various data sources.
+ *
+ * Each subclass must have a constructor with the following signature: (conf: Config, layerId: Int, isTrain: Boolean).
+ * This is required by CaffeOnSpark at startup.
+ *
+ * @param conf CaffeSpark configuration
+ * @param layerId the layer index in the network protocol file
+ * @param STOP_MARK stop mark to indicate source is exhausted
+ * @tparam T1 class of entries extracted from RDD
+ * @tparam T2 class of data blob in batch
+ */
+abstract class DataSource[T1, T2](conf: Config, layerId : Int, isTrain: Boolean, STOP_MARK: T1) {
+
+  val csource = new CaffeNetDataSource[T1, T2](conf.cconf, layerId, isTrain, STOP_MARK)
+
+  /**
+   * construct a sample RDD
+   * @param sc spark context
+   * @return RDD created from this source
+   */
+  def makeRDD(sc: SparkContext) : RDD[T1]
+
+  def init() : Boolean = csource.init()
+
+  def resetQueue(capacity_limit: Int = 0) : Unit = csource.resetQueue(capacity_limit)
+
+}
+
 object DataSource extends Serializable {
   @transient private val log: Logger = LoggerFactory.getLogger(this.getClass)
 
@@ -165,3 +177,4 @@ object DataSource extends Serializable {
     source
   }
 }
+

@@ -13,7 +13,7 @@ import org.slf4j.LoggerFactory
 /**
  * CaffeOnSpark configuration
  */
-class Config(sc: SparkContext) extends Serializable {
+class CaffeNetConfig(args: Array[String]) extends Serializable {
   @transient private var _log = LoggerFactory.getLogger(this.getClass)
   private var _protoFile = ""
   private var _isTraining = false
@@ -23,7 +23,6 @@ class Config(sc: SparkContext) extends Serializable {
   private var _modelPath = ""
   private var _outputPath = ""
   private var _devices = 0
-  private var _isRddPersistent = false
   private var _snapshotStateFile = ""
   private var _snapshotModelFile = ""
   private var _resize = false
@@ -36,7 +35,6 @@ class Config(sc: SparkContext) extends Serializable {
   private var _outputFormat = "json"
   private var _imageRoot = ""
   private var _labelFile = ""
-  private var _lmdb_partitions = 0
   private var _imageCaptionDFDir = ""
   private var _vocabDir = ""
   private var _embeddingDFDir = ""
@@ -183,17 +181,7 @@ class Config(sc: SparkContext) extends Serializable {
    */
   def devices_=(value: Int): Unit = _devices = value
 
-  /**
-   * True if training RDD should be persistent
-   */
-  def isRddPersistent = _isRddPersistent
-
-  /**
-   * Set flag indicate whether training RDD should be persistent or not
-   */
-  def isRddPersistent_=(value: Boolean): Unit = _isRddPersistent = value
-
-  /**
+   /**
    * Get HDFS path for snapshot states
    */
   def snapshotStateFile = _snapshotStateFile
@@ -312,16 +300,6 @@ class Config(sc: SparkContext) extends Serializable {
   def labelFile_=(value: String) = _labelFile = value
 
   /**
-   * Get number of LMDB partitions
-   */
-  def lmdb_partitions = _lmdb_partitions
-
-  /**
-   * Set number of LMDB partitions
-   */
-  def lmdb_partitions_=(value: Int) = _lmdb_partitions = value
-
-  /**
     * Get the input caption file
     */
   def captionFile = _captionFile
@@ -400,9 +378,6 @@ class Config(sc: SparkContext) extends Serializable {
     _netParam
   }
 
-  def this(sc: SparkContext, args: Array[String]) {
-
-    this(sc)
     //parse CLI arguments
     val cmd: CommandLine = {
       val options: Options = new Options
@@ -444,7 +419,6 @@ class Config(sc: SparkContext) extends Serializable {
     modelPath = if (cmd.hasOption("model")) cmd.getOptionValue("model") else ""
     outputPath = if (cmd.hasOption("output")) cmd.getOptionValue("output") else "output"
     devices = if (cmd.hasOption("devices")) Integer.parseInt(cmd.getOptionValue("devices")) else 1
-    isRddPersistent = cmd.hasOption("persistent")
     snapshotModelFile = if (cmd.hasOption("weights")) cmd.getOptionValue("weights") else ""
     snapshotStateFile = if (cmd.hasOption("snapshot")) cmd.getOptionValue("snapshot") else ""
     resize = cmd.hasOption("resize")
@@ -456,7 +430,100 @@ class Config(sc: SparkContext) extends Serializable {
       else CaffeNet.RDMA
     }
 
-    clusterSize = {
+    features =
+      if (cmd.hasOption("features")) {
+        val features_str = cmd.getOptionValue("features")
+        features_str.split(",")
+      } else {
+        null
+      }
+
+    outputFormat = if (cmd.hasOption("outputFormat")) cmd.getOptionValue("outputFormat") else "json"
+
+    imageRoot = if (cmd.hasOption("imageRoot")) cmd.getOptionValue("imageRoot") else null
+    labelFile = if (cmd.hasOption("labelFile")) cmd.getOptionValue("labelFile") else null
+    imageCaptionDFDir = if (cmd.hasOption("imageCaptionDFDir")) cmd.getOptionValue("imageCaptionDFDir") else ""
+    vocabDir = if (cmd.hasOption("vocabDir")) cmd.getOptionValue("vocabDir") else ""
+    embeddingDFDir = if (cmd.hasOption("embeddingDFDir")) cmd.getOptionValue("embeddingDFDir") else ""
+    captionFile = if (cmd.hasOption("captionFile")) cmd.getOptionValue("captionFile") else ""
+    captionLength = if (cmd.hasOption("captionLength")) Integer.parseInt(cmd.getOptionValue("captionLength")) else 20
+    vocabSize = if (cmd.hasOption("vocabSize")) Integer.parseInt(cmd.getOptionValue("vocabSize")) else -1
+
+  override def toString(): String = {
+    val buildr: StringBuilder = new StringBuilder()
+    buildr.append("protoFile:").append(protoFile).append("\n")
+    buildr.append("train:").append(isTraining).append("\n")
+    buildr.append("test:").append(isTest).append("\n")
+    if (features != null)
+      buildr.append("features:").append(features.mkString(",")).append("\n")
+    buildr.append("label:").append(label).append("\n")
+    buildr.append("outputFormat:").append(outputFormat).append("\n")
+    buildr.append("model:").append(modelPath).append("\n")
+    buildr.append("output:").append(outputPath).append("\n")
+    buildr.append("devices:").append(devices).append("\n")
+    buildr.append("snapshot:").append(snapshotStateFile).append("\n")
+    buildr.append("weights:").append(snapshotModelFile).append("\n")
+    buildr.append("clusterSize:").append(clusterSize).append("\n")
+    buildr.append("train_data_layer_id:").append(train_data_layer_id).append("\n")
+    buildr.append("test_data_layer_id:").append(test_data_layer_id).append("\n")
+    buildr.append("transform_thread_per_device:").append(transform_thread_per_device).append("\n")
+    buildr.append("captionFile:").append(captionFile).append("\n")
+    buildr.append("captionLength:").append(captionLength).append("\n")
+    buildr.append("vocabSize:").append(vocabSize).append("\n")
+    buildr.append("imageCaptionDFDir:").append(imageCaptionDFDir).append("\n")
+    buildr.append("vocabDir:").append(vocabDir).append("\n")
+    buildr.append("embeddingDFDir:").append(embeddingDFDir).append("\n")
+    buildr.toString()
+  }
+}
+
+class Config(sc: SparkContext, args: Array[String]) {
+
+  @transient private var _log = LoggerFactory.getLogger(this.getClass)
+
+  private var _isRddPersistent = false
+  private var _lmdb_partitions = 0
+  private var _outputFormat = "json"
+
+  val cconf = new CaffeNetConfig(args)
+
+  isRddPersistent = cmd.hasOption("persistent")
+
+    lmdb_partitions = if (!cmd.hasOption("lmdb_partitions")) clusterSize
+    else Integer.parseInt(cmd.getOptionValue("lmdb_partitions"))
+
+  override def toString() = {
+    val buildr = new StringBuilder().append(cconf.toString)
+    buildr.append("persistent:").append(isRddPersistent).append("\n")
+    buildr.append("lmdb_partitions:").append(lmdb_partitions).append("\n")
+    buildr.toString
+  }
+
+  /**
+   * Get number of LMDB partitions
+   */
+  def lmdb_partitions = _lmdb_partitions
+
+  /**
+   * Set number of LMDB partitions
+   */
+  def lmdb_partitions_=(value: Int) = _lmdb_partitions = value
+
+  val cmd = cconf.cmd
+
+  /**
+   * True if training RDD should be persistent
+   */
+  def isRddPersistent = _isRddPersistent
+
+  /**
+   * Set flag indicate whether training RDD should be persistent or not
+   */
+  def isRddPersistent_=(value: Boolean): Unit = _isRddPersistent = value
+
+  def isTraining = cconf.isTraining
+
+  val clusterSize = {
       val sparkMaster = if (sc == null) "" else sc.getConf.get("spark.master")
       if (sc.getConf.getBoolean("spark.dynamicAllocation.enabled", false)) {
         val maxExecutors = sc.getConf.getInt("spark.dynamicAllocation.maxExecutors", 1)
@@ -473,58 +540,4 @@ class Config(sc: SparkContext) extends Serializable {
       }
     }
 
-
-    features =
-      if (cmd.hasOption("features")) {
-        val features_str = cmd.getOptionValue("features")
-        features_str.split(",")
-      } else {
-        null
-      }
-
-    outputFormat = if (cmd.hasOption("outputFormat")) cmd.getOptionValue("outputFormat") else "json"
-
-    lmdb_partitions = if (!cmd.hasOption("lmdb_partitions")) clusterSize
-    else Integer.parseInt(cmd.getOptionValue("lmdb_partitions"))
-
-    imageRoot = if (cmd.hasOption("imageRoot")) cmd.getOptionValue("imageRoot") else null
-    labelFile = if (cmd.hasOption("labelFile")) cmd.getOptionValue("labelFile") else null
-    imageCaptionDFDir = if (cmd.hasOption("imageCaptionDFDir")) cmd.getOptionValue("imageCaptionDFDir") else ""
-    vocabDir = if (cmd.hasOption("vocabDir")) cmd.getOptionValue("vocabDir") else ""
-    embeddingDFDir = if (cmd.hasOption("embeddingDFDir")) cmd.getOptionValue("embeddingDFDir") else ""
-    captionFile = if (cmd.hasOption("captionFile")) cmd.getOptionValue("captionFile") else ""
-    captionLength = if (cmd.hasOption("captionLength")) Integer.parseInt(cmd.getOptionValue("captionLength")) else 20
-    vocabSize = if (cmd.hasOption("vocabSize")) Integer.parseInt(cmd.getOptionValue("vocabSize")) else -1
-
-  }
-
-  override def toString(): String = {
-    val buildr: StringBuilder = new StringBuilder()
-    buildr.append("protoFile:").append(protoFile).append("\n")
-    buildr.append("train:").append(isTraining).append("\n")
-    buildr.append("test:").append(isTest).append("\n")
-    if (features != null)
-      buildr.append("features:").append(features.mkString(",")).append("\n")
-    buildr.append("label:").append(label).append("\n")
-    buildr.append("outputFormat:").append(outputFormat).append("\n")
-    buildr.append("model:").append(modelPath).append("\n")
-    buildr.append("output:").append(outputPath).append("\n")
-    buildr.append("devices:").append(devices).append("\n")
-    buildr.append("persistent:").append(isRddPersistent).append("\n")
-    buildr.append("snapshot:").append(snapshotStateFile).append("\n")
-    buildr.append("weights:").append(snapshotModelFile).append("\n")
-    buildr.append("clusterSize:").append(clusterSize).append("\n")
-    buildr.append("lmdb_partitions:").append(lmdb_partitions).append("\n")
-    buildr.append("train_data_layer_id:").append(train_data_layer_id).append("\n")
-    buildr.append("test_data_layer_id:").append(test_data_layer_id).append("\n")
-    buildr.append("transform_thread_per_device:").append(transform_thread_per_device).append("\n")
-    buildr.append("captionFile:").append(captionFile).append("\n")
-    buildr.append("captionLength:").append(captionLength).append("\n")
-    buildr.append("vocabSize:").append(vocabSize).append("\n")
-    buildr.append("imageCaptionDFDir:").append(imageCaptionDFDir).append("\n")
-    buildr.append("vocabDir:").append(vocabDir).append("\n")
-    buildr.append("embeddingDFDir:").append(embeddingDFDir).append("\n")
-    buildr.toString()
-  }
 }
-
