@@ -7,19 +7,20 @@ import java.io.PrintWriter
 import java.net.InetAddress
 
 import caffe.Caffe._
-
+import com.yahoo.ml.caffe.openchai.CaosServerImpl
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
-import org.apache.spark.{SparkEnv, SparkContext, SparkConf, sql}
-import org.apache.spark.sql.types.{FloatType, StructField, StructType, ArrayType, StringType}
+import org.apache.spark.{SparkConf, SparkContext, SparkEnv, sql}
+import org.apache.spark.sql.types.{ArrayType, FloatType, StringType, StructField, StructType}
 import org.apache.spark.sql.{DataFrame, Row}
 import org.apache.spark.mllib.linalg.Vectors
 import org.apache.spark.sql.functions.udf
+import org.slf4j.{Logger, LoggerFactory}
 
-import org.slf4j.{LoggerFactory, Logger}
 import scala.collection.mutable
 import scala.collection.immutable.Map
 import org.apache.spark.rdd._
+
 import scala.reflect.ClassTag
 
 object CaffeOnSpark {
@@ -104,6 +105,7 @@ class CaffeOnSpark(@transient val sc: SparkContext) extends Serializable {
     Vectors.dense(double_features)
   })
 
+  val caos = new CaosServerImpl(openchai.Defaults.q)
   private def setupTraining[T1, T2](sources: Array[DataSource[T1, T2]]): Array[String] = {
     //Phase 1: Gather RDMA addresses from executors
     val conf = sources(0).conf
@@ -189,13 +191,12 @@ class CaffeOnSpark(@transient val sc: SparkContext) extends Serializable {
     if (conf.clusterSize > 1) {
       val sizeRDD = trainDataRDD.mapPartitions {
         iter => {
-          val partSize = iter.size
-          // Spark decides how data partitions are distributed among executors in this step.
-          // synchronize among the executors,
-          // to achieve same number of partitions.
-          val processor = CaffeProcessor.instance[T1, T2]()
-          processor.sync()
-          Iterator(partSize)
+          val syncStruct =
+          impl.sync(syncStruct)
+//          val partSize = iter.size
+//          val processor = CaffeProcessor.instance[T1, T2]()
+//          processor.sync()
+//          Iterator(partSize)
         }
       }.persist()
       minPartSize = sizeRDD.min()

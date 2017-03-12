@@ -478,6 +478,19 @@ class CaffeNetConfig(args: Array[String]) extends Serializable {
 }
 
 class Config(sc: SparkContext, args: Array[String]) {
+  def snapshotModelFile = cconf.snapshotModelFile
+
+  def snapshotStateFile = cconf.snapshotStateFile
+
+  def outputPath = cconf.outputPath
+
+  def outputFormat = cconf.outputFormat
+
+  def isTest = cconf.isTest
+
+  def isFeature = cconf.isFeature
+
+  def solverParameter = cconf.solverParameter
 
   @transient private var _log = LoggerFactory.getLogger(this.getClass)
 

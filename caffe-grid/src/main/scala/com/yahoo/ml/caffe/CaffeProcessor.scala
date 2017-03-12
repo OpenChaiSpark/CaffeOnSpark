@@ -3,22 +3,23 @@
 // Please see LICENSE file in the project root for terms.
 package com.yahoo.ml.caffe
 
-import java.util.concurrent.{ArrayBlockingQueue, ForkJoinPool, ConcurrentHashMap}
+import java.util.concurrent.{ArrayBlockingQueue, ConcurrentHashMap, ForkJoinPool}
 import java.util.ArrayList
 
 import caffe.Caffe._
 import com.yahoo.ml.jcaffe._
-import org.slf4j.{LoggerFactory, Logger}
+import org.slf4j.{Logger, LoggerFactory}
 
 import scala.concurrent.duration.Duration
-import scala.concurrent.{Await, Future, ExecutionContext}
-import org.apache.spark.sql.Row
+import scala.concurrent.{Await, ExecutionContext, Future}
+//import org.apache.spark.sql.Row
 import scala.collection.immutable.Map
 import scala.collection.mutable.ArrayBuffer
 import java.util.concurrent.atomic.AtomicReference
 import org.openchai.caffeonspark.XferArrayBlockingQueue
 
 private[caffe] object CaffeProcessor {
+
   private val log: Logger = LoggerFactory.getLogger(this.getClass)
   var myInstance: CaffeProcessor[_, _] = null
   val msg = s"** SHB: CAFFE On SPARK CaffeProcessor on ${java.net.InetAddress.getLocalHost.getHostName}**\n  Brought to you by Jerry Wang et al"
@@ -39,7 +40,8 @@ private[caffe] class QueuePair[T]  {
 }
 
 private[caffe] class CaffeProcessor[T1, T2](val sources: Array[CaffeNetDataSource[T1, T2]],
-                                             val rank: Int) {
+  val rank: Int) {
+
   val log: Logger = LoggerFactory.getLogger(this.getClass)
   log.info("SHB: CaffeProcessor rank is " + rank)
   //initialize sources
@@ -49,7 +51,7 @@ private[caffe] class CaffeProcessor[T1, T2](val sources: Array[CaffeNetDataSourc
     }
   }
 
-  @volatile var validationResults: ArrayBuffer[Row] = new ArrayBuffer[Row]()
+  @volatile var validationResults: ArrayBuffer[OutputType] = new ArrayBuffer[OutputType]()
   val conf = sources(0).conf
   val solverMode: Int = sources(0).solverParameter.getSolverMode().getNumber()
   val numLocalGPUs: Int = conf.devices
@@ -65,7 +67,7 @@ private[caffe] class CaffeProcessor[T1, T2](val sources: Array[CaffeNetDataSourc
   val objectHolder: ConcurrentHashMap[Object, Object] = new ConcurrentHashMap[Object, Object]()
   val snapshotInterval =  sources(0).solverParameter.getSnapshot()
   var STOP_MARK: (Array[String], Array[FloatBlob]) =  (Array[String](), Array())
-  @volatile var results: ArrayList[Row] = new ArrayList[Row]
+  @volatile var results: ArrayList[OutputType] = new ArrayList[OutputType]
   @volatile var solversFinished = false
   val localModelPath : String = {
     if (sources(0).isTrain) ""
@@ -458,7 +460,7 @@ private[caffe] class CaffeProcessor[T1, T2](val sources: Array[CaffeNetDataSourc
             validationLine = updateValidationReport(validationLine, sources(1).batchSize, caffeNet.getTestIter(0))
             queuePairSet(1).Free.put(tp2)
           }
-          validationResults += Row.fromSeq(validationLine.toSeq)
+          validationResults += /*Row.fromSeq(*/validationLine.toSeq /*)*/
           caffeNet.aggregateValidationOutputs()
         }
       
@@ -531,7 +533,7 @@ private[caffe] class CaffeProcessor[T1, T2](val sources: Array[CaffeNetDataSourc
               result = result :+ fv
             }
             results synchronized {
-              results.add(Row.fromSeq(result))
+              results.add(result)
             }
           }
           queuePair.Free.put(tpl)

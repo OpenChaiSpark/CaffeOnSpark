@@ -22,4 +22,6 @@ package object caffe {
 
   type QueueEntry = (Array[String], Array[FloatBlob])
 
+   type OutputType = Seq[_]
+
 }

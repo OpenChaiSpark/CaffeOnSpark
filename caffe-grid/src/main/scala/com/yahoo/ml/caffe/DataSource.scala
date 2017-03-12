@@ -122,7 +122,7 @@ import org.slf4j.{LoggerFactory, Logger}
  * @tparam T1 class of entries extracted from RDD
  * @tparam T2 class of data blob in batch
  */
-abstract class DataSource[T1, T2](conf: Config, layerId : Int, isTrain: Boolean, STOP_MARK: T1) {
+abstract class DataSource[T1, T2](val conf: Config, val layerId : Int, val isTrain: Boolean, val STOP_MARK: T1) {
 
   val csource = new CaffeNetDataSource[T1, T2](conf.cconf, layerId, isTrain, STOP_MARK)
 
